@@ -3,7 +3,7 @@
 // Descrição: Lê teclado matricial 4x4, aplica debounce, auto-repeat
 //            e timeout. Saída: vetor de 20 dígitos BCD + pulso de
 //            validação de 1 ciclo.
-// Clock esperado: 1 MHz (1 ciclo = 1 µs)
+// Clock esperado: 1 kHz (1 ciclo = 1 ms)
 // ================================================================
 
 // Struct para armazenar sequência de dígitos capturados
@@ -15,7 +15,7 @@ typedef struct packed {
 
 module decodificador_de_teclado (
     // Sinais de controle
-    input  logic       clk,           // Clock de 1 MHz
+    input  logic       clk,           // Clock de 1 kHz
     input  logic       rst,           // Reset síncrono, ativo em alto
     input  logic       enable,        // Ativa processamento a cada ciclo
     // Interface com teclado matricial (active-low)
@@ -27,18 +27,18 @@ module decodificador_de_teclado (
 );
 
     // -----------------------------------------------------------
-    // Parâmetros de temporização (1 MHz → 1 ciclo = 1 µs)
+    // Parâmetros de temporização (1 kHz → 1 ciclo = 1 ms)
     // -----------------------------------------------------------
-    // Debounce: aguarda 100 µs (100 ciclos) de chave pressionada
-    localparam logic [6:0]  DEBOUNCE_VAL = 7'd100;
-    // Processamento: delay de 20 µs para confirmar dígito
-    localparam logic [4:0]  PROCESS_VAL  = 5'd20;
+    // Debounce: mínimo representável no clock de 1 kHz (1 ciclo = 1 ms)
+    localparam logic [6:0]  DEBOUNCE_VAL = 7'd1;
+    // Processamento: mínimo representável no clock de 1 kHz (1 ms)
+    localparam logic [4:0]  PROCESS_VAL  = 5'd1;
     // Hold time: 2 s de espera antes de iniciar auto-repeat
-    localparam logic [20:0] HOLD_VAL     = 21'd2_000_000;
+    localparam logic [20:0] HOLD_VAL     = 21'd2_000;
     // Rate: intervalo de 1 s entre repetições automáticas
-    localparam logic [20:0] RATE_VAL     = 21'd1_000_000;
+    localparam logic [20:0] RATE_VAL     = 21'd1_000;
     // Timeout: reseta sequência após 5 s sem atividade
-    localparam logic [22:0] TIMEOUT_VAL  = 23'd5_000_000;
+    localparam logic [22:0] TIMEOUT_VAL  = 23'd5_000;
 
     // -----------------------------------------------------------
     // Varredura de linhas (active-low)
@@ -112,7 +112,7 @@ module decodificador_de_teclado (
 
     // Estado atual da FSM de debounce
     db_st_t     db_st;
-    // Contador de debounce (máx 100 ciclos = 100 µs)
+    // Contador de debounce (mínimo efetivo: 1 ciclo = 1 ms)
     logic [6:0] db_cnt;
     // Código BCD da tecla capturada e validada
     logic [3:0] key_bcd;
@@ -326,7 +326,7 @@ module decodificador_de_teclado (
                     end
                 end
 
-                // Estado CONFIRM: processa confirmação (aguarda 20 µs de delay)
+                // Estado CONFIRM: processa confirmação (aguarda PROCESS_VAL ciclos)
                 ST_CONFIRM: begin
                     if (proc_cnt >= PROCESS_VAL - 5'd1) begin
                         // Completou delay → gera pulso de validação

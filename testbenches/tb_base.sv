@@ -1,6 +1,6 @@
-`timescale 1ns/1ns
+`timescale 1ns/1ps
 
-module testbench;
+module tb_replicado_base;
 
   logic clk;
   logic rst;
@@ -20,13 +20,12 @@ module testbench;
     .digitos_valid(digitos_valid)
   );
 
-  always #500ns clk = ~clk;
+  always #500us clk = ~clk;
 
-  // Task para pressionar tecla sincronizada com varredura
-  task pressionar_tecla(input int linha, input int coluna);
+  task automatic pressionar_tecla(input int linha, input int coluna, input int hold_ms = 30);
     logic [3:0] col_code;
     logic [3:0] lin_code;
-    int tempo_inicio;
+    time tempo_inicio;
 
     case (coluna)
       0: col_code = 4'b0111;
@@ -42,57 +41,43 @@ module testbench;
       default: lin_code = 4'b1110;
     endcase
 
-    $display("[%0t] Pressionar: Linha %d, Coluna %d", $time, linha, coluna);
-
-    // Aguarda a linha correta aparecer
-    while (dut.lin_matriz !== lin_code) #1us;
-    $display("[%0t] Linha sincronizada - Ativando coluna", $time);
-
-    // Ativa coluna
+    while (dut.lin_matriz !== lin_code) #100us;
     col_matriz = col_code;
     tempo_inicio = $time;
-    #1us;
 
-    // Mantém por 500 µs de TEMPO REAL (não ciclos)
-    while (($time - tempo_inicio) < 500000) begin
-      #1us;
-    end
+    while (($time - tempo_inicio) < (hold_ms * 1ms)) #100us;
 
     col_matriz = 4'b1111;
-    $display("[%0t] Tecla liberada", $time);
   endtask
 
   initial begin
-    $dumpfile("sim.vcd");
-    $dumpvars(0, testbench);
+    $dumpfile("tb_replicado_base.vcd");
+    $dumpvars(0, tb_replicado_base);
 
     clk = 0;
     rst = 1;
     enable = 1;
     col_matriz = 4'b1111;
 
-    #2us;
+    #2ms;
     rst = 0;
-    $display("[%0t] Sistema inicializado", $time);
 
-    $display("\n=== TESTE 1: Tecla 1 ===");
     pressionar_tecla(0, 0);
-    #10us;
-
-    $display("\n=== TESTE 2: Tecla 2 ===");
+    #10ms;
     pressionar_tecla(0, 1);
-    #10us;
-
-    $display("\n=== TESTE 3: Tecla * (Confirmar) ===");
+    #10ms;
+    pressionar_tecla(0, 2);
+    #10ms;
+    pressionar_tecla(1, 2);
+    #10ms;
     pressionar_tecla(3, 0);
-    #50us;
+    #50ms;
 
-    $display("\n=== FIM ===");
     $finish;
   end
 
   always @(posedge digitos_valid) begin
-    $display("[%0t] *** VALIDADO: %h ***", $time, digitos_value);
+    $display("[%0t] VALIDADO: %h", $time, digitos_value);
   end
 
   always @(posedge dut.key_pulse) begin

@@ -3,14 +3,14 @@
 
 **Projeto:** Decodificador de Teclado com Debounce e Auto-Repeat  
 **Data:** 2026-04-14  
-**Clock:** 1 MHz (1 ciclo = 1 µs)  
+**Clock:** 1 kHz (1 ciclo = 1 ms)  
 
 ---
 
 ## 1. FSM DE DEBOUNCE E AUTO-REPEAT
 
 ### Descrição
-A FSM de debounce valida leituras do teclado filtrando ruído (100 µs de estabilidade) e gerencia auto-repeat para dígitos numéricos com hold time (2s) e rate (1s).
+A FSM de debounce valida leituras do teclado filtrando ruído no mínimo representável do clock base (1 ms) e gerencia auto-repeat para dígitos numéricos com hold time (2s) e rate (1s).
 
 ### Estados
 - **DB_IDLE:** Aguardando detecção de tecla
@@ -24,8 +24,8 @@ A FSM de debounce valida leituras do teclado filtrando ruído (100 µs de estabi
 | **DB_IDLE** | `raw_valid = 1` | DB_COUNT | `db_cnt ← 1`<br>`key_bcd ← raw_bcd` |
 | **DB_IDLE** | `raw_valid = 0` | DB_IDLE | Sem ação |
 | **DB_COUNT** | `raw_valid = 0` | DB_IDLE | `db_cnt ← 0` |
-| **DB_COUNT** | `raw_valid = 1` AND `db_cnt < 99` | DB_COUNT | `db_cnt ← db_cnt + 1` |
-| **DB_COUNT** | `raw_valid = 1` AND `db_cnt ≥ 99` | DB_LOCKED | `key_pulse ← 1`<br>`db_cnt ← 0`<br>`rep_cnt ← 0`<br>`rep_phase ← 0` |
+| **DB_COUNT** | `raw_valid = 1` AND `db_cnt < (DEBOUNCE_VAL - 1)` | DB_COUNT | `db_cnt ← db_cnt + 1` |
+| **DB_COUNT** | `raw_valid = 1` AND `db_cnt ≥ (DEBOUNCE_VAL - 1)` | DB_LOCKED | `key_pulse ← 1`<br>`db_cnt ← 0`<br>`rep_cnt ← 0`<br>`rep_phase ← 0` |
 | **DB_LOCKED** | `raw_valid = 0` | DB_IDLE | `rep_cnt ← 0`<br>`rep_phase ← 0` |
 | **DB_LOCKED** | `raw_valid = 1` AND `key_bcd ≤ 9`<br>AND `rep_phase = 0`<br>AND `rep_cnt < (HOLD-1)` | DB_LOCKED | `rep_cnt ← rep_cnt + 1` |
 | **DB_LOCKED** | `raw_valid = 1` AND `key_bcd ≤ 9`<br>AND `rep_phase = 0`<br>AND `rep_cnt ≥ (HOLD-1)` | DB_LOCKED | `rep_pulse ← 1`<br>`rep_cnt ← 0`<br>`rep_phase ← 1` |
@@ -67,8 +67,8 @@ A FSM principal acumula dígitos em um buffer de 20 posições, gerencia confirm
 | **ST_DIGIT** | `(key_pulse = 1` OR `rep_pulse = 1)` AND `key_bcd = 0xA` | ST_CONFIRM | `to_cnt ← 0`<br>`proc_cnt ← 0` |
 | **ST_DIGIT** | `(key_pulse = 1` OR `rep_pulse = 1)` AND `key_bcd = 0xB` | ST_HASH | `to_cnt ← 0` |
 | **ST_DIGIT** | `(key_pulse = 1` OR `rep_pulse = 1)` AND `key_bcd ≤ 9` | ST_DIGIT | `to_cnt ← 0`<br>**SHIFT:** `digits[i] ← digits[i-1]` para i=19..1<br>`digitos_value[0] ← key_bcd` |
-| **ST_CONFIRM** | `proc_cnt < 19` | ST_CONFIRM | `proc_cnt ← proc_cnt + 1` |
-| **ST_CONFIRM** | `proc_cnt ≥ 19` | ST_CLR | `digitos_valid ← 1`<br>`to_active ← 0`<br>`to_cnt ← 0`<br>`proc_cnt ← 0` |
+| **ST_CONFIRM** | `proc_cnt < (PROCESS_VAL - 1)` | ST_CONFIRM | `proc_cnt ← proc_cnt + 1` |
+| **ST_CONFIRM** | `proc_cnt ≥ (PROCESS_VAL - 1)` | ST_CLR | `digitos_valid ← 1`<br>`to_active ← 0`<br>`to_cnt ← 0`<br>`proc_cnt ← 0` |
 | **ST_HASH** | — | ST_CLR | `digitos_value ← {20{0xB}}`<br>`digitos_valid ← 1`<br>`to_active ← 0`<br>`to_cnt ← 0` |
 | **ST_TIMEOUT** | — | ST_CLR | `digitos_value ← {20{0xE}}`<br>`digitos_valid ← 1`<br>`to_cnt ← 0` |
 | **ST_CLR** | — | ST_IDLE | `digitos_value ← {20{0xF}}`<br>`proc_cnt ← 0` |
@@ -99,8 +99,8 @@ Observação: o `to_pulse` é consumido apenas em `ST_IDLE` e `ST_DIGIT`, que en
 
 | Parâmetro | Símbolo | Valor | Descrição |
 |:---|:---|:---|:---|
-| Debounce | DEBOUNCE_VAL | 100 µs | Tempo de estabilidade mínima |
-| Processamento | PROCESS_VAL | 20 µs | Delay de confirmação |
+| Debounce | DEBOUNCE_VAL | 1 ms (1 ciclo) | Tempo de estabilidade mínima |
+| Processamento | PROCESS_VAL | 1 ms (1 ciclo) | Delay de confirmação |
 | Hold Time | HOLD_VAL | 2 s | Espera antes de auto-repeat |
 | Taxa de Repetição | RATE_VAL | 1 s | Intervalo de auto-repeat |
 | Timeout Global | TIMEOUT_VAL | 5 s | Timeout sem atividade |
@@ -112,7 +112,7 @@ Observação: o `to_pulse` é consumido apenas em `ST_IDLE` e `ST_DIGIT`, que en
 ### Entradas
 | Sinal | Tipo | Descrição |
 |:---|:---|:---|
-| `clk` | input logic | Clock de 1 MHz |
+| `clk` | input logic | Clock de 1 kHz |
 | `rst` | input logic | Reset síncrono (ativo alto) |
 | `enable` | input logic | Habilita processamento |
 | `col_matriz[3:0]` | input logic | Colunas do teclado (active-low) |
@@ -128,7 +128,7 @@ Observação: o `to_pulse` é consumido apenas em `ST_IDLE` e `ST_DIGIT`, que en
 | Sinal | Tipo | Descrição |
 |:---|:---|:---|
 | `db_st` | db_st_t | Estado da FSM debounce |
-| `db_cnt[6:0]` | logic | Contador debounce (0-100) |
+| `db_cnt[6:0]` | logic | Contador debounce |
 | `key_bcd[3:0]` | logic | Código BCD capturado |
 | `key_pulse` | logic | Pulso debounce completo |
 | `rep_cnt[20:0]` | logic | Contador auto-repeat |
@@ -185,7 +185,7 @@ Resultado: Novo dígito entra em [0], ältesten sai de [19]
 ```
 to_active = 1 durante todo tempo
 to_cnt incrementa continuamente
-Quando to_cnt ≥ 5.000.000:
+Quando to_cnt ≥ 5.000:
   → to_pulse ← 1 (1 ciclo)
   → Em ST_IDLE ou ST_DIGIT: fsm ← ST_TIMEOUT
   → digitos_value ← {20{0xE}}
