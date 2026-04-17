@@ -6,8 +6,6 @@
 // Clock esperado: 1 MHz (1 ciclo = 1 µs)
 // ================================================================
 
-`timescale 1us / 1ns
-
 // Struct para armazenar sequência de dígitos capturados
 // Array de 20 posições, cada uma contendo um dígito BCD (4 bits)
 // digits[19] = dígito mais antigo / digits[0] = dígito mais recente
@@ -228,6 +226,8 @@ module decodificador_de_teclado (
     logic [22:0] to_cnt;
     // Flag indicando que timeout está ativo
     logic        to_active;
+    // Pulso de timeout (1 ciclo) consumido pela FSM principal
+    logic        to_pulse;
 
     // Máquina de estados principal
     // Acumula dígitos, gerencia timeout, confirma ou reseta sequência
@@ -238,20 +238,23 @@ module decodificador_de_teclado (
             digitos_valid <= 1'b0;               // Sem pulso de validação
             fsm           <= ST_IDLE;            // Volta para estado de espera
             to_active     <= 1'b0;               // Timeout desativo
+            to_pulse      <= 1'b0;
             to_cnt        <= '0;
             proc_cnt      <= '0;
         end else if (enable) begin
             // Default: limpa pulso de validação (assert por 1 ciclo)
             digitos_valid <= 1'b0;
+            // Default: limpa pulso de timeout (assert por 1 ciclo)
+            to_pulse      <= 1'b0;
 
             // Timeout global de 5 s (ativo sempre que to_active=1)
             // Timeout ativo: incrementa contador; se atingir limite, força timeout
             if (to_active) begin
                 if (to_cnt >= TIMEOUT_VAL - 23'd1) begin
-                    // Espirou 5 s → entra em estado de timeout
+                    // Espirou 5 s → gera pulso para transição a ST_TIMEOUT
                     to_active <= 1'b0;
                     to_cnt    <= '0;
-                    fsm       <= ST_TIMEOUT;
+                    to_pulse  <= 1'b1;
                 end else begin
                     // Continua contando
                     to_cnt <= to_cnt + 23'd1;
@@ -261,7 +264,9 @@ module decodificador_de_teclado (
             case (fsm)
                 // Estado IDLE: espera primeiro dígito ou tecla especial
                 ST_IDLE: begin
-                    if (key_pulse) begin
+                    if (to_pulse) begin
+                        fsm <= ST_TIMEOUT;
+                    end else if (key_pulse) begin
                         // Recebeu pulso de tecla → ativa timeout
                         to_active <= 1'b1;
                         to_cnt    <= '0;
@@ -282,7 +287,9 @@ module decodificador_de_teclado (
 
                 // Estado DIGIT: acumulando dígitos (pode vir de key_pulse ou rep_pulse)
                 ST_DIGIT: begin
-                    if (key_pulse || rep_pulse) begin
+                    if (to_pulse) begin
+                        fsm <= ST_TIMEOUT;
+                    end else if (key_pulse || rep_pulse) begin
                         // Recebeu novo acionamento → reseta contador de timeout
                         to_cnt <= '0;
                         if (key_bcd == 4'hA) begin

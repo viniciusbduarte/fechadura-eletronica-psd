@@ -57,10 +57,12 @@ A FSM principal acumula dígitos em um buffer de 20 posições, gerencia confirm
 
 | Estado Atual | Condição | Próximo Estado | Ações |
 |:---|:---|:---|:---|
+| **ST_IDLE** | `to_pulse = 1` | ST_TIMEOUT | Sem ação adicional |
 | **ST_IDLE** | `key_pulse = 0` | ST_IDLE | Sem ação |
 | **ST_IDLE** | `key_pulse = 1` AND `key_bcd = 0xA` | ST_CONFIRM | `to_active ← 1`<br>`to_cnt ← 0`<br>`proc_cnt ← 0` |
 | **ST_IDLE** | `key_pulse = 1` AND `key_bcd = 0xB` | ST_HASH | `to_active ← 1`<br>`to_cnt ← 0` |
 | **ST_IDLE** | `key_pulse = 1` AND `key_bcd ≤ 9` | ST_DIGIT | `to_active ← 1`<br>`to_cnt ← 0`<br>`digitos_value[0] ← key_bcd` |
+| **ST_DIGIT** | `to_pulse = 1` | ST_TIMEOUT | Sem ação adicional |
 | **ST_DIGIT** | `key_pulse = 0` AND `rep_pulse = 0` | ST_DIGIT | Sem ação |
 | **ST_DIGIT** | `(key_pulse = 1` OR `rep_pulse = 1)` AND `key_bcd = 0xA` | ST_CONFIRM | `to_cnt ← 0`<br>`proc_cnt ← 0` |
 | **ST_DIGIT** | `(key_pulse = 1` OR `rep_pulse = 1)` AND `key_bcd = 0xB` | ST_HASH | `to_cnt ← 0` |
@@ -75,7 +77,9 @@ A FSM principal acumula dígitos em um buffer de 20 posições, gerencia confirm
 
 | Condição | Ação |
 |:---|:---|
-| `to_active = 1` AND `to_cnt ≥ (TIMEOUT_VAL - 1)` | `to_active ← 0`<br>`to_cnt ← 0`<br>`fsm ← ST_TIMEOUT`<br>(Aplicável em qualquer estado) |
+| `to_active = 1` AND `to_cnt ≥ (TIMEOUT_VAL - 1)` | `to_active ← 0`<br>`to_cnt ← 0`<br>`to_pulse ← 1` (1 ciclo) |
+
+Observação: o `to_pulse` é consumido apenas em `ST_IDLE` e `ST_DIGIT`, que então fazem a transição para `ST_TIMEOUT`.
 
 ---
 
@@ -138,6 +142,7 @@ A FSM principal acumula dígitos em um buffer de 20 posições, gerencia confirm
 | `proc_cnt[4:0]` | logic | Contador processamento |
 | `to_cnt[22:0]` | logic | Contador timeout |
 | `to_active` | logic | Timeout ativado |
+| `to_pulse` | logic | Pulso de timeout (1 ciclo) |
 
 ---
 
@@ -174,102 +179,15 @@ SHIFT (ST_DIGIT com novo dígito):
 Resultado: Novo dígito entra em [0], ältesten sai de [19]
 ```
 
----
-
-## 7. FLUXO DE EXECUÇÃO TÍPICO
-
-### Cenário: Pressionar 1, 2 e confirmar com *
-
-```
-[t=0µs]     RESET ativo
-            db_st = DB_IDLE, fsm = ST_IDLE
-            
-[t=2µs]     RESET liberado
-            Sistema operacional
-            
-[t=2µs]     Pressionar TECLA 1 (sincronizado com scan)
-            col_matriz ← 0111 (coluna 0)
-            raw_valid ← 1, raw_bcd ← 0x1
-            
-[t=3µs]     db_st → DB_COUNT
-            db_cnt ← 1, key_bcd ← 0x1
-            
-[~t=101µs]  db_cnt ≥ 99 (100 ciclos decorridos)
-            db_st → DB_LOCKED
-            key_pulse ← 1 (pulso)
-            
-[~t=101µs]  fsm = ST_IDLE, key_pulse = 1, key_bcd = 0x1
-            fsm → ST_DIGIT
-            to_active ← 1, to_cnt ← 0
-            digitos_value.digits[0] ← 0x1
-            
-[t=111µs]   Pressionar TECLA 2
-            col_matriz ← 1011 (coluna 1)
-            raw_valid ← 1, raw_bcd ← 0x2
-            
-[~t=211µs]  key_pulse ← 1 (segunda vez)
-            
-[~t=211µs]  fsm = ST_DIGIT, key_pulse = 1, key_bcd = 0x2
-            SHIFT buffer: digits[1] ← digits[0] (0x1)
-            digitos_value.digits[0] ← 0x2
-            
-[t=221µs]   Pressionar TECLA * (confirmação)
-            col_matriz ← 0111 (coluna 0, linha 3)
-            raw_valid ← 1, raw_bcd ← 0xA
-            
-[~t=321µs]  key_pulse ← 1 (terceira vez)
-            
-[~t=321µs]  fsm = ST_DIGIT, key_pulse = 1, key_bcd = 0xA (*)
-            fsm → ST_CONFIRM
-            proc_cnt ← 0
-            
-[t=321µs até ~341µs]
-            proc_cnt incrementa de 0 até 19 (20 ciclos)
-            
-[~t=341µs]  proc_cnt ≥ 19
-            digitos_valid ← 1 (pulso)
-            Buffer enviado:
-              digits[19:2] = 0xF (inválido)
-              digits[1] = 0x1 (primeiro dígito)
-              digits[0] = 0x2 (segundo dígito)
-            fsm → ST_CLR
-            
-[~t=361µs]  fsm = ST_CLR
-            digitos_value ← {20{0xF}} (reseta buffer)
-            fsm → ST_IDLE
-            
-[~t=381µs]  Sistema pronto para nova sequência
-```
-
----
-
-## 8. LEGENDA DE SÍMBOLOS
-
-| Símbolo | Significado |
-|:---|:---|
-| `←` | Atribuição não-bloqueante (`<=` em Verilog) |
-| `AND` | Operador lógico E |
-| `OR` | Operador lógico OU |
-| `≤` | Menor ou igual |
-| `≥` | Maior ou igual |
-| `<` | Menor que |
-| `>` | Maior que |
-| `=` | Igual |
-| `≠` | Diferente |
-| `—` | Não aplicável / Transição incondicional |
-| `[N:M]` | Bits N até M de um sinal |
-| `{N{X}}` | Replicação: N cópias de X |
-
----
-
-## 9. CASOS ESPECIAIS E TRATAMENTO DE ERROS
+## 7. CASOS ESPECIAIS E TRATAMENTO DE ERROS
 
 ### Caso 1: Tecla Pressionada > 5 segundos
 ```
 to_active = 1 durante todo tempo
 to_cnt incrementa continuamente
 Quando to_cnt ≥ 5.000.000:
-  → fsm ← ST_TIMEOUT
+  → to_pulse ← 1 (1 ciclo)
+  → Em ST_IDLE ou ST_DIGIT: fsm ← ST_TIMEOUT
   → digitos_value ← {20{0xE}}
   → digitos_valid ← 1 (pulso)
   → fsm ← ST_CLR → ST_IDLE
@@ -309,7 +227,7 @@ Se rst = 1:
 
 ---
 
-## 10. RESUMO DE ESTADOS FINAIS
+## 8. RESUMO DE ESTADOS FINAIS
 
 ### Situações de Saída
 
@@ -323,8 +241,3 @@ Se rst = 1:
 
 ---
 
-**FIM DO DOCUMENTO**
-
-Data de Geração: 2026-04-14  
-Versão: 1.0  
-Status: ✅ APROVADO
