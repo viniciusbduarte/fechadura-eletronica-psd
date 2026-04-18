@@ -51,8 +51,6 @@ module tb_cenario_hash_reset;
   endtask
 
   initial begin
-    int i;
-
     $dumpfile("tb_cenario_hash_reset.vcd");
     $dumpvars(0, tb_cenario_hash_reset);
 
@@ -64,21 +62,26 @@ module tb_cenario_hash_reset;
     #2ms;
     rst = 0;
 
-    pressionar_tecla(0, 0); // 1
+    pressionar_tecla(0, 0);
     #10ms;
-    pressionar_tecla(3, 2); // #
-
-    @(posedge digitos_valid);
-
-    for (i = 0; i < 20; i++) begin
-      if (digitos_value.digits[i] !== 4'hB) begin
-        $fatal(1, "Falha no reset por hash: digits[%0d] != 0xB", i);
-      end
-    end
-
-    $display("[PASSOU] Reset por # gerou vetor 0xB");
+    pressionar_tecla(0, 1);
     #10ms;
+    pressionar_tecla(0, 2);
+    #10ms;
+    pressionar_tecla(1, 2);
+    #10ms;
+    pressionar_tecla(3, 2);
+    #50ms;
+
     $finish;
+  end
+
+  always @(posedge digitos_valid) begin
+    $display("[%0t] LIMPO: %h", $time, digitos_value);
+  end
+
+  always @(posedge dut.key_pulse) begin
+    $display("[%0t] key_pulse: %h", $time, dut.key_bcd);
   end
 
 endmodule

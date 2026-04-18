@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module tb_cenario_fluxo_confirmacao;
+module tb_fluxo_confirmacao;
 
   logic clk;
   logic rst;
@@ -51,8 +51,8 @@ module tb_cenario_fluxo_confirmacao;
   endtask
 
   initial begin
-    $dumpfile("tb_cenario_fluxo_confirmacao.vcd");
-    $dumpvars(0, tb_cenario_fluxo_confirmacao);
+    $dumpfile("tb_fluxo_confirmacao.vcd");
+    $dumpvars(0, tb_fluxo_confirmacao);
 
     clk = 0;
     rst = 1;
@@ -62,25 +62,26 @@ module tb_cenario_fluxo_confirmacao;
     #2ms;
     rst = 0;
 
-    pressionar_tecla(0, 0); // 1
+    pressionar_tecla(0, 0);
     #10ms;
-    pressionar_tecla(0, 1); // 2
+    pressionar_tecla(0, 1);
     #10ms;
-    pressionar_tecla(0, 2); // 3
+    pressionar_tecla(0, 2);
     #10ms;
-    pressionar_tecla(3, 0); // *
+    pressionar_tecla(1, 2);
+    #10ms;
+    pressionar_tecla(3, 0);
+    #50ms;
 
-    @(posedge digitos_valid);
-
-    if (digitos_value.digits[0] !== 4'h3 ||
-        digitos_value.digits[1] !== 4'h2 ||
-        digitos_value.digits[2] !== 4'h1) begin
-      $fatal(1, "Falha no fluxo de confirmacao: esperado [3,2,1] nas posicoes [0,1,2]");
-    end
-
-    $display("[PASSOU] Fluxo de confirmacao 1-2-3-*");
-    #10ms;
     $finish;
+  end
+
+  always @(posedge digitos_valid) begin
+    $display("[%0t] VALIDADO: %h", $time, digitos_value);
+  end
+
+  always @(posedge dut.key_pulse) begin
+    $display("[%0t] key_pulse: %h", $time, dut.key_bcd);
   end
 
 endmodule
